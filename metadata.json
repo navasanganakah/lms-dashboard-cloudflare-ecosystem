@@ -1,0 +1,6 @@
+{
+  "name": "Cloudflare LMS Dashboard",
+  "description": "A production-ready Open Source LMS Dashboard built for Cloudflare Workers with Assets, D1, and Firebase FCM.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

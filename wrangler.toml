@@ -1,0 +1,51 @@
+name = "cloudflare-lms-dashboard"
+main = "worker/index.ts"
+compatibility_date = "2024-03-20"
+
+# "Cloudflare Workers with Assets" configuration
+# This deploys the React frontend (Next.js static export) along with the Worker API
+assets = { directory = "out" }
+
+# -------------------------------------------------------------
+# [PRODUCTION ENVIRONMENT]
+# -------------------------------------------------------------
+[env.production]
+name = "cloudflare-lms-dashboard-prod"
+
+# Cloudflare D1 Database (Production)
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "lms_db_prod"
+database_id = "YOUR_PROD_D1_ID"
+
+# Cloudflare R2 Storage (Production)
+[[env.production.r2_buckets]]
+binding = "STORAGE"
+bucket_name = "lms-assets-prod"
+
+# Cloudflare KV for Secrets/Config (Production)
+[[env.production.kv_namespaces]]
+binding = "CONFIG_KV"
+id = "YOUR_PROD_KV_ID"
+
+# -------------------------------------------------------------
+# [PREVIEW / DEVELOPMENT ENVIRONMENT]
+# -------------------------------------------------------------
+[env.preview]
+name = "cloudflare-lms-dashboard-preview"
+
+# Cloudflare D1 Database (Preview)
+[[env.preview.d1_databases]]
+binding = "DB"
+database_name = "lms_db_preview"
+database_id = "YOUR_PREVIEW_D1_ID"
+
+# Cloudflare R2 Storage (Preview)
+[[env.preview.r2_buckets]]
+binding = "STORAGE"
+bucket_name = "lms-assets-preview"
+
+# Cloudflare KV for Secrets/Config (Preview)
+[[env.preview.kv_namespaces]]
+binding = "CONFIG_KV"
+id = "YOUR_PREVIEW_KV_ID"
