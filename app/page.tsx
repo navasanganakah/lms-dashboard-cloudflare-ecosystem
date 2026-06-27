@@ -103,9 +103,12 @@ export default function DashboardPage() {
   }
 
   const renderContent = () => {
-    if (activeTab === "manage") return <ManageCoursesView />;
+    if (activeTab === "manage" && user?.role === 'admin') return <ManageCoursesView />;
     if (activeTab === "chat") return <ChatView user={user} />;
-    return <DashboardView user={user} />;
+    if (activeTab === "catalog") return <CourseCatalogView user={user} />;
+    
+    if (user?.role === 'admin') return <AdminDashboardView user={user} />;
+    return <StudentDashboardView user={user} />;
   };
 
   return (
@@ -142,9 +145,17 @@ export default function DashboardPage() {
             </div>
             
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
-              <SidebarItem icon={LayoutDashboard} label="Dashboard" active={activeTab === "dashboard"} onClick={() => setActiveTab("dashboard")} />
-              <SidebarItem icon={BookOpen} label="My Courses" active={activeTab === "my_courses"} onClick={() => setActiveTab("my_courses")} />
-              <SidebarItem icon={Plus} label="Manage Courses" active={activeTab === "manage"} onClick={() => setActiveTab("manage")} />
+              {user?.role === 'admin' ? (
+                <>
+                  <SidebarItem icon={LayoutDashboard} label="Admin Overview" active={activeTab === "dashboard"} onClick={() => setActiveTab("dashboard")} />
+                  <SidebarItem icon={Plus} label="Manage Courses" active={activeTab === "manage"} onClick={() => setActiveTab("manage")} />
+                </>
+              ) : (
+                <>
+                  <SidebarItem icon={LayoutDashboard} label="My Learning" active={activeTab === "dashboard"} onClick={() => setActiveTab("dashboard")} />
+                  <SidebarItem icon={BookOpen} label="Course Catalog" active={activeTab === "catalog"} onClick={() => setActiveTab("catalog")} />
+                </>
+              )}
               <SidebarItem icon={MessageSquare} label="Community Chat" active={activeTab === "chat"} onClick={() => setActiveTab("chat")} />
               <SidebarItem icon={Settings} label="Settings" active={activeTab === "settings"} onClick={() => setActiveTab("settings")} />
             </div>
@@ -171,7 +182,9 @@ export default function DashboardPage() {
             >
               <Menu className="w-5 h-5" />
             </button>
-            <h1 className="text-xl font-semibold hidden md:block text-slate-900">{activeTab === 'manage' ? 'Admin Panel' : 'Overview'}</h1>
+            <h1 className="text-xl font-semibold hidden md:block text-slate-900">
+              {activeTab === 'manage' ? 'Admin Panel' : activeTab === 'catalog' ? 'Course Catalog' : 'Overview'}
+            </h1>
             <span className="hidden md:inline-block px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-xs font-mono">prod-edge-v2.1</span>
           </div>
 
@@ -222,9 +235,9 @@ export default function DashboardPage() {
 }
 
 // --------------------------------------------------------
-// Dashboard View
+// Admin Dashboard View
 // --------------------------------------------------------
-function DashboardView({ user }: { user: any }) {
+function AdminDashboardView({ user }: { user: any }) {
   const [statsData, setStatsData] = useState<any>({ students: 0, courses: 0, completion: 0 });
   const [courses, setCourses] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -360,6 +373,208 @@ function DashboardView({ user }: { user: any }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// --------------------------------------------------------
+// Student Dashboard View
+// --------------------------------------------------------
+function StudentDashboardView({ user }: { user: any }) {
+  const [courses, setCourses] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // For now we fetch all courses as if they are enrolled.
+    fetch('/api/courses')
+      .then(res => res.ok ? res.json() : [])
+      .then(data => {
+        setCourses(data);
+        setIsLoading(false);
+      })
+      .catch(() => {
+        setCourses([]);
+        setIsLoading(false);
+      });
+  }, []);
+
+  const stats = [
+    { label: "Enrolled Courses", value: courses.length, icon: BookOpen, color: "text-blue-600", bg: "bg-blue-100" },
+    { label: "Completed Courses", value: 0, icon: ShieldCheck, color: "text-green-600", bg: "bg-green-100" },
+    { label: "Overall Progress", value: "25%", icon: LayoutDashboard, color: "text-orange-600", bg: "bg-orange-100" },
+  ];
+
+  return (
+    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-8">
+      {/* Welcome Section */}
+      <div>
+        <h1 className="text-xl font-bold text-slate-900">Welcome back, {user?.name || "Student"}!</h1>
+        <p className="text-sm text-slate-500 mt-1">Ready to continue your learning journey today?</p>
+      </div>
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {stats.map((stat, idx) => (
+          <div key={idx} className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex flex-col justify-between min-h-[120px]">
+            <div className="flex justify-between items-start mb-2">
+              <div className="text-slate-500 text-sm font-medium">{stat.label}</div>
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${stat.bg} ${stat.color}`}>
+                <stat.icon className="w-4 h-4" />
+              </div>
+            </div>
+            <div>
+              <div className="text-3xl font-bold text-slate-900">
+                {isLoading ? "-" : stat.value}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Continue Learning Section */}
+      <div>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-lg font-bold text-slate-900">Continue Learning</h2>
+        </div>
+
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12 text-slate-500 text-sm">Loading your courses...</div>
+        ) : courses.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 bg-white border border-dashed border-slate-300 rounded-xl">
+            <BookOpen className="w-8 h-8 text-slate-400 mb-3" />
+            <p className="text-sm font-medium text-slate-900">You haven't enrolled in any courses yet</p>
+            <p className="text-xs text-slate-500 mt-1">Go to Course Catalog to start learning.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {courses.map((course) => (
+              <motion.div 
+                whileHover={{ y: -2 }}
+                key={course.id} 
+                className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col cursor-pointer group transition-shadow hover:shadow-md"
+              >
+                <div className="relative h-48 w-full bg-slate-100 flex items-center justify-center">
+                  {course.image ? (
+                    <Image 
+                      src={course.image} 
+                      alt={course.title} 
+                      fill 
+                      className="object-cover transition-transform duration-500 group-hover:scale-105"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <BookOpen className="w-8 h-8 text-slate-300" />
+                  )}
+                  <div className="absolute inset-0 bg-slate-900/10 group-hover:bg-transparent transition-colors" />
+                </div>
+                
+                <div className="p-4 flex-1 flex flex-col border-t border-slate-100">
+                  <h3 className="font-semibold text-slate-900 text-base leading-tight mb-2 line-clamp-2 group-hover:text-orange-600 transition-colors">
+                    {course.title}
+                  </h3>
+                  
+                  <div className="mt-auto pt-3 space-y-3">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs font-bold">
+                        <span className="text-slate-700">Progress</span>
+                        <span className="text-orange-600">{course.progress || 0}%</span>
+                      </div>
+                      <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-orange-500 rounded-full transition-all duration-1000 ease-out" 
+                          style={{ width: `${course.progress || 0}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// --------------------------------------------------------
+// Course Catalog View
+// --------------------------------------------------------
+function CourseCatalogView({ user }: { user: any }) {
+  const [courses, setCourses] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/courses')
+      .then(res => res.ok ? res.json() : [])
+      .then(data => {
+        setCourses(data);
+        setIsLoading(false);
+      })
+      .catch(() => {
+        setCourses([]);
+        setIsLoading(false);
+      });
+  }, []);
+
+  return (
+    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">Course Catalog</h1>
+          <p className="text-sm text-slate-500 mt-1">Explore all available courses and enroll.</p>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12 text-slate-500 text-sm">Loading courses...</div>
+      ) : courses.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 bg-white border border-dashed border-slate-300 rounded-xl">
+          <BookOpen className="w-8 h-8 text-slate-400 mb-3" />
+          <p className="text-sm font-medium text-slate-900">No courses available yet</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {courses.map((course) => (
+            <motion.div 
+              whileHover={{ y: -2 }}
+              key={course.id} 
+              className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col group transition-shadow hover:shadow-md"
+            >
+              <div className="relative h-48 w-full bg-slate-100 flex items-center justify-center">
+                {course.image ? (
+                  <Image 
+                    src={course.image} 
+                    alt={course.title} 
+                    fill 
+                    className="object-cover transition-transform duration-500 group-hover:scale-105"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <BookOpen className="w-8 h-8 text-slate-300" />
+                )}
+                <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-md text-xs font-semibold text-slate-700 shadow-sm">
+                  {course.category}
+                </div>
+              </div>
+              
+              <div className="p-4 flex-1 flex flex-col border-t border-slate-100">
+                <h3 className="font-semibold text-slate-900 text-base leading-tight mb-2 line-clamp-2">
+                  {course.title}
+                </h3>
+                <p className="text-sm text-slate-500 line-clamp-2 mb-4">
+                  {course.description || "A comprehensive learning module for your journey."}
+                </p>
+                <div className="mt-auto pt-3 border-t border-slate-100">
+                  <button className="w-full py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-medium transition-colors">
+                    Enroll Now
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
