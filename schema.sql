@@ -16,7 +16,8 @@ CREATE TABLE courses (
     description TEXT,
     thumbnail_url TEXT, -- URL from Cloudflare R2
     instructor_id TEXT NOT NULL,
-    status TEXT DEFAULT 'draft', -- 'draft', 'published'
+    status TEXT DEFAULT 'draft', -- 'draft', 'published', 'deleted'
+    deleted_at DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (instructor_id) REFERENCES users(id) ON DELETE CASCADE
 );

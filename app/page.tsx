@@ -18,10 +18,16 @@ import {
   UploadCloud,
   Plus,
   Video,
-  Eye
+  Eye,
+  Database,
+  Download,
+  Upload,
+  Trash2,
+  AlertTriangle
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import Image from "next/image";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 // Stats configuration
 const STAT_CONFIG = [
@@ -241,6 +247,123 @@ function AdminDashboardView({ user }: { user: any }) {
   const [statsData, setStatsData] = useState<any>({ students: 0, courses: 0, completion: 0 });
   const [courses, setCourses] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [restoreMessage, setRestoreMessage] = useState('');
+  const [courseToDelete, setCourseToDelete] = useState<any>(null);
+  
+  const [isUploadingCsv, setIsUploadingCsv] = useState(false);
+  const [csvUploadMessage, setCsvUploadMessage] = useState('');
+
+  const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    const reader = new FileReader();
+    
+    setIsUploadingCsv(true);
+    setCsvUploadMessage('Parsing CSV...');
+    
+    reader.onload = async (event) => {
+      try {
+        const csvText = event.target?.result as string;
+        const lines = csvText.split('\n').filter(line => line.trim() !== '');
+        if (lines.length < 2) throw new Error('Invalid CSV format');
+        
+        const headers = lines[0].split(',').map(h => h.trim());
+        const userIdIndex = headers.indexOf('user_id');
+        const courseIdIndex = headers.indexOf('course_id');
+        const progressIndex = headers.indexOf('progress');
+        
+        if (userIdIndex === -1 || courseIdIndex === -1) {
+          throw new Error('CSV must contain user_id and course_id columns');
+        }
+        
+        const enrollments = [];
+        for (let i = 1; i < lines.length; i++) {
+          const values = lines[i].split(',').map(v => v.trim());
+          enrollments.push({
+            user_id: values[userIdIndex],
+            course_id: values[courseIdIndex],
+            progress: progressIndex !== -1 ? parseInt(values[progressIndex]) || 0 : 0
+          });
+        }
+        
+        setCsvUploadMessage('Uploading enrollments...');
+        const token = typeof window !== 'undefined' ? localStorage.getItem('ns_session_token') : '';
+        const res = await fetch('/api/enrollments/bulk', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify(enrollments)
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          setCsvUploadMessage(`Successfully imported ${data.count || enrollments.length} enrollments!`);
+        } else {
+          setCsvUploadMessage('Failed to upload enrollments.');
+        }
+      } catch (err: any) {
+        setCsvUploadMessage(`Error: ${err.message || 'Invalid CSV file.'}`);
+      } finally {
+        setIsUploadingCsv(false);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleDeleteCourse = async () => {
+    if (!courseToDelete) return;
+    
+    const token = typeof window !== 'undefined' ? localStorage.getItem('ns_session_token') : '';
+    try {
+      const res = await fetch(`/api/courses/${courseToDelete.id}`, {
+        method: 'DELETE',
+        headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
+      });
+      
+      if (res.ok) {
+        setCourses(courses.filter(c => c.id !== courseToDelete.id));
+      }
+    } catch (e) {
+      console.error("Failed to delete course", e);
+    } finally {
+      setCourseToDelete(null);
+    }
+  };
+
+  const handleExport = () => {
+    window.open('/api/backup', '_blank');
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        setIsRestoring(true);
+        setRestoreMessage('Restoring backup...');
+        const json = JSON.parse(event.target?.result as string);
+        const res = await fetch('/api/backup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(json)
+        });
+        if (res.ok) {
+          setRestoreMessage('Restore successful! Please refresh the page.');
+        } else {
+          setRestoreMessage('Failed to restore backup.');
+        }
+      } catch (err) {
+        setRestoreMessage('Invalid backup file.');
+      } finally {
+        setIsRestoring(false);
+      }
+    };
+    reader.readAsText(file);
+  };
 
   useEffect(() => {
     // API Call to Cloudflare Worker
@@ -320,6 +443,13 @@ function AdminDashboardView({ user }: { user: any }) {
                   <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-md text-xs font-semibold text-slate-700 shadow-sm">
                     {course.category}
                   </div>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setCourseToDelete(course); }}
+                    className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm p-1.5 rounded-md text-red-500 hover:text-red-700 shadow-sm hover:bg-red-50 transition-colors z-10"
+                    title="Delete Course"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
                 
                 <div className="p-4 flex-1 flex flex-col border-t border-slate-100">
@@ -352,6 +482,78 @@ function AdminDashboardView({ user }: { user: any }) {
         )}
       </div>
 
+      {/* Backup and Restore Section */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex flex-col mt-8">
+        <h3 className="font-bold text-sm mb-4 flex items-center gap-2 text-slate-900">
+          <Database className="w-4 h-4 text-orange-500" />
+          Data Management (Cloudflare D1)
+        </h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div>
+            <h4 className="font-semibold text-sm mb-2 text-slate-800">Backup & Restore</h4>
+            <p className="text-sm text-slate-600 mb-4">
+              Export your entire database schema and data as a JSON file, or restore from a previously exported backup.
+            </p>
+            
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={handleExport}
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                Export JSON Backup
+              </button>
+              
+              <label className="flex items-center justify-center gap-2 px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-sm font-medium rounded-lg transition-colors cursor-pointer disabled:opacity-50">
+                <Upload className="w-4 h-4" />
+                {isRestoring ? 'Restoring...' : 'Import JSON Backup'}
+                <input 
+                  type="file" 
+                  accept=".json" 
+                  className="hidden" 
+                  onChange={handleImport}
+                  disabled={isRestoring}
+                />
+              </label>
+            </div>
+            
+            {restoreMessage && (
+              <div className={`mt-4 text-sm font-medium p-3 rounded-lg ${restoreMessage.includes('successful') ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700'}`}>
+                {restoreMessage}
+              </div>
+            )}
+          </div>
+          
+          <div>
+            <h4 className="font-semibold text-sm mb-2 text-slate-800">Bulk Enrollment Import</h4>
+            <p className="text-sm text-slate-600 mb-4">
+              Upload a CSV file containing <code className="bg-slate-100 px-1 py-0.5 rounded text-xs">user_id,course_id,progress</code> to bulk enroll students.
+            </p>
+            
+            <div>
+              <label className="flex items-center justify-center gap-2 px-4 py-2 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-sm font-medium rounded-lg transition-colors cursor-pointer disabled:opacity-50 inline-flex">
+                <UploadCloud className="w-4 h-4" />
+                {isUploadingCsv ? 'Parsing...' : 'Upload CSV File'}
+                <input 
+                  type="file" 
+                  accept=".csv" 
+                  className="hidden" 
+                  onChange={handleCsvUpload}
+                  disabled={isUploadingCsv}
+                />
+              </label>
+            </div>
+            
+            {csvUploadMessage && (
+              <div className={`mt-4 text-sm font-medium p-3 rounded-lg ${csvUploadMessage.includes('Success') ? 'bg-green-50 text-green-700' : 'bg-slate-50 text-slate-700'}`}>
+                {csvUploadMessage}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* System Status / Cloudflare Architecture Note */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex flex-col mt-8">
         <h3 className="font-bold text-sm mb-4 flex items-center gap-2 text-slate-900">
@@ -373,6 +575,46 @@ function AdminDashboardView({ user }: { user: any }) {
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {courseToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden"
+            >
+              <div className="p-6">
+                <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                  <AlertTriangle className="w-6 h-6 text-red-600" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">Delete Course?</h3>
+                <p className="text-sm text-slate-600 mb-6">
+                  Are you sure you want to delete <strong className="text-slate-900">{courseToDelete.title}</strong>? 
+                  This will temporarily remove it from the platform. It will be permanently deleted after 7 days.
+                </p>
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    onClick={() => setCourseToDelete(null)}
+                    className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDeleteCourse}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete Course
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -445,6 +687,47 @@ function StudentDashboardView({ user }: { user: any }) {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Progress Chart */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+        <h2 className="text-lg font-bold text-slate-900 mb-6">Learning Progress</h2>
+        <div className="h-[250px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart
+              data={[
+                { name: 'Mon', minutes: 20 },
+                { name: 'Tue', minutes: 45 },
+                { name: 'Wed', minutes: 30 },
+                { name: 'Thu', minutes: 60 },
+                { name: 'Fri', minutes: 90 },
+                { name: 'Sat', minutes: 120 },
+                { name: 'Sun', minutes: 40 },
+              ]}
+              margin={{
+                top: 5,
+                right: 0,
+                left: -20,
+                bottom: 0,
+              }}
+            >
+              <defs>
+                <linearGradient id="colorMinutes" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#ea580c" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#ea580c" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dy={10} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+              <Tooltip 
+                contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                itemStyle={{ color: '#ea580c', fontWeight: 600 }}
+              />
+              <Area type="monotone" dataKey="minutes" stroke="#ea580c" strokeWidth={2} fillOpacity={1} fill="url(#colorMinutes)" activeDot={{ r: 6, strokeWidth: 0 }} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       {/* Continue Learning Section */}

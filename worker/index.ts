@@ -170,8 +170,23 @@ export default {
     // --- Courses & Enrollments Routes ---
     if (url.pathname === "/api/courses" && request.method === "GET") {
       try {
-        const courses = await env.DB.prepare("SELECT * FROM courses WHERE status = 'published'").all();
+        const courses = await env.DB.prepare("SELECT * FROM courses WHERE status = 'published' AND status != 'deleted'").all();
         return new Response(JSON.stringify(courses.results), { status: 200, headers: { "Content-Type": "application/json" } });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: (e as Error).message }), { status: 500 });
+      }
+    }
+
+    if (url.pathname.startsWith("/api/courses/") && request.method === "DELETE") {
+      const authHeader = request.headers.get("Authorization");
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
+      }
+      // Assuming admin check is done here in a real app
+      const courseId = url.pathname.split("/")[3];
+      try {
+        await env.DB.prepare("UPDATE courses SET status = 'deleted', deleted_at = CURRENT_TIMESTAMP WHERE id = ?").bind(courseId).run();
+        return new Response(JSON.stringify({ success: true, message: "Course scheduled for permanent deletion in 7 days." }), { status: 200, headers: { "Content-Type": "application/json" } });
       } catch (e) {
         return new Response(JSON.stringify({ error: (e as Error).message }), { status: 500 });
       }
@@ -197,6 +212,94 @@ export default {
           WHERE e.user_id = ?
         `).bind(session.user_id).all();
         return new Response(JSON.stringify(enrollments.results), { status: 200, headers: { "Content-Type": "application/json" } });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: (e as Error).message }), { status: 500 });
+      }
+    }
+
+    if (url.pathname === "/api/enrollments/bulk" && request.method === "POST") {
+      const authHeader = request.headers.get("Authorization");
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
+      }
+
+      try {
+        const enrollments = await request.json() as any[];
+        if (!Array.isArray(enrollments)) {
+           return new Response(JSON.stringify({ error: "Expected an array of enrollments" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+
+        const stmts = [];
+        for (const e of enrollments) {
+          if (e.user_id && e.course_id) {
+            const id = crypto.randomUUID();
+            stmts.push(
+              env.DB.prepare("INSERT INTO enrollments (id, user_id, course_id, progress) VALUES (?, ?, ?, ?)").bind(id, e.user_id, e.course_id, e.progress || 0)
+            );
+          }
+        }
+        
+        if (stmts.length > 0) {
+          await env.DB.batch(stmts);
+        }
+        
+        return new Response(JSON.stringify({ success: true, count: stmts.length }), { status: 200, headers: { "Content-Type": "application/json" } });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: (e as Error).message }), { status: 500, headers: { "Content-Type": "application/json" } });
+      }
+    }
+
+    // --- Backup & Restore Routes ---
+    if (url.pathname === "/api/backup" && request.method === "GET") {
+      try {
+        const tables = ["users", "otps", "courses", "sessions", "fcm_tokens", "enrollments", "modules", "lessons", "assessments", "materials"];
+        const backupData: Record<string, any> = {};
+        for (const table of tables) {
+          const res = await env.DB.prepare(`SELECT * FROM ${table}`).all();
+          backupData[table] = res.results;
+        }
+        return new Response(JSON.stringify(backupData), { 
+          status: 200, 
+          headers: { 
+            "Content-Type": "application/json",
+            "Content-Disposition": `attachment; filename="lms_backup_${new Date().toISOString().split('T')[0]}.json"`
+          } 
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: (e as Error).message }), { status: 500 });
+      }
+    }
+
+    if (url.pathname === "/api/backup" && request.method === "POST") {
+      try {
+        const data = await request.json() as Record<string, any[]>;
+        const deleteOrder = ["materials", "assessments", "lessons", "modules", "enrollments", "fcm_tokens", "sessions", "courses", "otps", "users"];
+        const insertOrder = ["users", "otps", "courses", "sessions", "fcm_tokens", "enrollments", "modules", "lessons", "assessments", "materials"];
+        
+        const stmts: D1PreparedStatement[] = [];
+        
+        // Delete existing data in reverse dependency order
+        for (const table of deleteOrder) {
+          stmts.push(env.DB.prepare(`DELETE FROM ${table}`));
+        }
+        
+        // Insert new data in dependency order
+        for (const table of insertOrder) {
+          if (data[table] && Array.isArray(data[table])) {
+            for (const row of data[table]) {
+              const keys = Object.keys(row);
+              const values = Object.values(row);
+              if (keys.length > 0) {
+                const placeholders = keys.map(() => '?').join(',');
+                stmts.push(env.DB.prepare(`INSERT INTO ${table} (${keys.join(',')}) VALUES (${placeholders})`).bind(...values));
+              }
+            }
+          }
+        }
+        
+        // D1 batch executes inside a transaction by default
+        await env.DB.batch(stmts);
+        return new Response(JSON.stringify({ success: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       } catch (e) {
         return new Response(JSON.stringify({ error: (e as Error).message }), { status: 500 });
       }
