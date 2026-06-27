@@ -32,6 +32,4 @@ jobs:
         run: flutter analyze
 
       - name: Publish Package to pub.dev
-        uses: dart-lang/setup-dart/publish@v1
-        with:
-          workingDirectory: ./ns_lms_os_sdk
+        run: dart pub publish -f

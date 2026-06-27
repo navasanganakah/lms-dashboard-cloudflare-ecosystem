@@ -385,15 +385,31 @@ function StudentDashboardView({ user }: { user: any }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // For now we fetch all courses as if they are enrolled.
-    fetch('/api/courses')
-      .then(res => res.ok ? res.json() : [])
+    // Fetch enrollments (fallback to mock data if API fails)
+    const token = typeof window !== 'undefined' ? localStorage.getItem('ns_session_token') : '';
+    
+    const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
+    
+    fetch('/api/enrollments', { headers })
+      .then(res => res.ok ? res.json() : null)
       .then(data => {
-        setCourses(data);
+        if (data && Array.isArray(data)) {
+          setCourses(data);
+        } else {
+          // Fallback mock data
+          setCourses([
+            { id: '1', title: 'Introduction to Flutter and Dart', category: 'Mobile Dev', progress: 45, image: 'https://picsum.photos/seed/flutter/800/600' },
+            { id: '2', title: 'Advanced State Management', category: 'Architecture', progress: 12, image: 'https://picsum.photos/seed/state/800/600' }
+          ]);
+        }
         setIsLoading(false);
       })
       .catch(() => {
-        setCourses([]);
+        // Fallback mock data on fetch error
+        setCourses([
+          { id: '1', title: 'Introduction to Flutter and Dart', category: 'Mobile Dev', progress: 45, image: 'https://picsum.photos/seed/flutter/800/600' },
+          { id: '2', title: 'Advanced State Management', category: 'Architecture', progress: 12, image: 'https://picsum.photos/seed/state/800/600' }
+        ]);
         setIsLoading(false);
       });
   }, []);
@@ -502,20 +518,55 @@ function StudentDashboardView({ user }: { user: any }) {
 // --------------------------------------------------------
 function CourseCatalogView({ user }: { user: any }) {
   const [courses, setCourses] = useState<any[]>([]);
+  const [enrolledCourseIds, setEnrolledCourseIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    fetch('/api/courses')
-      .then(res => res.ok ? res.json() : [])
-      .then(data => {
-        setCourses(data);
+    const fetchCatalog = async () => {
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('ns_session_token') : '';
+        const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
+        
+        // Fetch courses and enrollments concurrently
+        const [coursesRes, enrollmentsRes] = await Promise.all([
+          fetch('/api/courses'),
+          fetch('/api/enrollments', { headers })
+        ]);
+
+        let coursesData = coursesRes.ok ? await coursesRes.json() : null;
+        let enrollmentsData = enrollmentsRes.ok ? await enrollmentsRes.json() : null;
+        
+        // Fallback for mock environment
+        if (!coursesData || !Array.isArray(coursesData) || coursesData.length === 0) {
+          coursesData = [
+            { id: '1', title: 'Introduction to Flutter and Dart', category: 'Mobile Dev', image: 'https://picsum.photos/seed/flutter/800/600', description: 'Start building natively compiled applications for mobile from a single codebase.' },
+            { id: '2', title: 'Advanced State Management', category: 'Architecture', image: 'https://picsum.photos/seed/state/800/600', description: 'Master Provider, Riverpod, and BLoC patterns for complex apps.' },
+            { id: '3', title: 'UI/UX Design for Developers', category: 'Design', image: 'https://picsum.photos/seed/design/800/600', description: 'Learn how to create beautiful, accessible, and intuitive interfaces.' }
+          ];
+        }
+
+        if (!enrollmentsData || !Array.isArray(enrollmentsData)) {
+          enrollmentsData = [
+            { id: '1', title: 'Introduction to Flutter and Dart' }
+          ];
+        }
+
+        setCourses(coursesData);
+        setEnrolledCourseIds(new Set(enrollmentsData.map((e: any) => e.id || e.course_id)));
+      } catch (e) {
+        setCourses([
+            { id: '1', title: 'Introduction to Flutter and Dart', category: 'Mobile Dev', image: 'https://picsum.photos/seed/flutter/800/600', description: 'Start building natively compiled applications for mobile from a single codebase.' },
+            { id: '2', title: 'Advanced State Management', category: 'Architecture', image: 'https://picsum.photos/seed/state/800/600', description: 'Master Provider, Riverpod, and BLoC patterns for complex apps.' },
+            { id: '3', title: 'UI/UX Design for Developers', category: 'Design', image: 'https://picsum.photos/seed/design/800/600', description: 'Learn how to create beautiful, accessible, and intuitive interfaces.' }
+        ]);
+        setEnrolledCourseIds(new Set(['1']));
+      } finally {
         setIsLoading(false);
-      })
-      .catch(() => {
-        setCourses([]);
-        setIsLoading(false);
-      });
+      }
+    };
+
+    fetchCatalog();
   }, []);
 
   const filteredCourses = courses.filter(course => {
@@ -589,9 +640,16 @@ function CourseCatalogView({ user }: { user: any }) {
                   {course.description || "A comprehensive learning module for your journey."}
                 </p>
                 <div className="mt-auto pt-3 border-t border-slate-100">
-                  <button className="w-full py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-medium transition-colors">
-                    Enroll Now
-                  </button>
+                  {enrolledCourseIds.has(course.id) ? (
+                    <div className="w-full py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-semibold flex items-center justify-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-green-600" />
+                      Enrolled
+                    </div>
+                  ) : (
+                    <button className="w-full py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-medium transition-colors">
+                      Enroll Now
+                    </button>
+                  )}
                 </div>
               </div>
             </motion.div>

@@ -167,6 +167,41 @@ export default {
       return new Response(JSON.stringify({ success: true }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
 
+    // --- Courses & Enrollments Routes ---
+    if (url.pathname === "/api/courses" && request.method === "GET") {
+      try {
+        const courses = await env.DB.prepare("SELECT * FROM courses WHERE status = 'published'").all();
+        return new Response(JSON.stringify(courses.results), { status: 200, headers: { "Content-Type": "application/json" } });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: (e as Error).message }), { status: 500 });
+      }
+    }
+
+    if (url.pathname === "/api/enrollments" && request.method === "GET") {
+      const authHeader = request.headers.get("Authorization");
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
+      }
+      const token = authHeader.split(" ")[1];
+      const session = await env.DB.prepare("SELECT * FROM sessions WHERE id = ? AND expires_at > ?").bind(token, new Date().toISOString()).first();
+      
+      if (!session) {
+        return new Response(JSON.stringify({ error: "Invalid session" }), { status: 401, headers: { "Content-Type": "application/json" } });
+      }
+
+      try {
+        const enrollments = await env.DB.prepare(`
+          SELECT c.*, e.progress, e.enrolled_at 
+          FROM enrollments e 
+          JOIN courses c ON e.course_id = c.id 
+          WHERE e.user_id = ?
+        `).bind(session.user_id).all();
+        return new Response(JSON.stringify(enrollments.results), { status: 200, headers: { "Content-Type": "application/json" } });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: (e as Error).message }), { status: 500 });
+      }
+    }
+
     // API Route for WebSockets / Chat
     if (url.pathname.startsWith("/api/chat/")) {
       const roomId = url.pathname.split("/")[3];
