@@ -6,6 +6,9 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Required for OIDC authentication with pub.dev
+      contents: read
     defaults:
       run:
         working-directory: ./ns_lms_os_sdk
@@ -31,5 +34,4 @@ jobs:
       - name: Publish Package to pub.dev
         uses: dart-lang/setup-dart/publish@v1
         with:
-          credentialJson: ${{ secrets.PUB_CREDENTIALS }}
           workingDirectory: ./ns_lms_os_sdk

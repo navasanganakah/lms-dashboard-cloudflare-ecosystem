@@ -503,6 +503,7 @@ function StudentDashboardView({ user }: { user: any }) {
 function CourseCatalogView({ user }: { user: any }) {
   const [courses, setCourses] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     fetch('/api/courses')
@@ -517,25 +518,47 @@ function CourseCatalogView({ user }: { user: any }) {
       });
   }, []);
 
+  const filteredCourses = courses.filter(course => {
+    const query = searchQuery.toLowerCase();
+    return (
+      (course.title && course.title.toLowerCase().includes(query)) ||
+      (course.category && course.category.toLowerCase().includes(query))
+    );
+  });
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Course Catalog</h1>
           <p className="text-sm text-slate-500 mt-1">Explore all available courses and enroll.</p>
+        </div>
+        <div className="relative">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <Search className="h-4 w-4 text-slate-400" />
+          </div>
+          <input
+            type="text"
+            placeholder="Search courses or categories..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg bg-white text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent sm:w-72"
+          />
         </div>
       </div>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12 text-slate-500 text-sm">Loading courses...</div>
-      ) : courses.length === 0 ? (
+      ) : filteredCourses.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 bg-white border border-dashed border-slate-300 rounded-xl">
           <BookOpen className="w-8 h-8 text-slate-400 mb-3" />
-          <p className="text-sm font-medium text-slate-900">No courses available yet</p>
+          <p className="text-sm font-medium text-slate-900">
+            {courses.length === 0 ? "No courses available yet" : "No courses found matching your search"}
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {courses.map((course) => (
+          {filteredCourses.map((course) => (
             <motion.div 
               whileHover={{ y: -2 }}
               key={course.id} 
