@@ -80,3 +80,18 @@ CREATE TABLE assessments (
     passing_score INTEGER DEFAULT 50,
     FOREIGN KEY (module_id) REFERENCES modules(id) ON DELETE CASCADE
 );
+
+DROP TABLE IF EXISTS otps;
+CREATE TABLE otps (
+    email TEXT PRIMARY KEY,
+    code TEXT NOT NULL,
+    expires_at DATETIME NOT NULL
+);
+
+DROP TABLE IF EXISTS sessions;
+CREATE TABLE sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    expires_at DATETIME NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
