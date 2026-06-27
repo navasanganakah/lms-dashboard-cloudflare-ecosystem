@@ -177,6 +177,33 @@ export default {
       }
     }
 
+    if (url.pathname === "/api/courses/draft" && request.method === "POST") {
+      const authHeader = request.headers.get("Authorization");
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
+      }
+      
+      try {
+        const body = await request.json() as { id?: string; title: string; description: string; category?: string };
+        const courseId = body.id || crypto.randomUUID();
+        
+        // Mocking the DB upsert for a draft course
+        await env.DB.prepare(
+          `INSERT INTO courses (id, title, description, category, status) 
+           VALUES (?, ?, ?, ?, 'draft')
+           ON CONFLICT(id) DO UPDATE SET 
+           title = excluded.title, 
+           description = excluded.description, 
+           category = excluded.category, 
+           updated_at = CURRENT_TIMESTAMP`
+        ).bind(courseId, body.title, body.description, body.category || 'Uncategorized').run();
+
+        return new Response(JSON.stringify({ success: true, id: courseId, savedAt: new Date().toISOString() }), { status: 200, headers: { "Content-Type": "application/json" } });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: (e as Error).message }), { status: 500 });
+      }
+    }
+
     if (url.pathname.startsWith("/api/courses/") && request.method === "DELETE") {
       const authHeader = request.headers.get("Authorization");
       if (!authHeader || !authHeader.startsWith("Bearer ")) {

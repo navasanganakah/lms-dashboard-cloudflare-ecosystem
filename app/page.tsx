@@ -23,11 +23,14 @@ import {
   Download,
   Upload,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  RefreshCw,
+  Clock,
+  Book,
+  CheckCircle
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import Image from "next/image";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 // Stats configuration
 const STAT_CONFIG = [
@@ -365,24 +368,40 @@ function AdminDashboardView({ user }: { user: any }) {
     reader.readAsText(file);
   };
 
-  useEffect(() => {
-    // API Call to Cloudflare Worker
-    Promise.all([
-      fetch('/api/stats').then(res => res.ok ? res.json() : { students: 0, courses: 0, completion: 0 }).catch(() => ({ students: 0, courses: 0, completion: 0 })),
-      fetch('/api/courses').then(res => res.ok ? res.json() : []).catch(() => [])
-    ]).then(([stats, coursesData]) => {
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      const [stats, coursesData] = await Promise.all([
+        fetch('/api/stats').then(res => res.ok ? res.json() : { students: 0, courses: 0, completion: 0 }).catch(() => ({ students: 0, courses: 0, completion: 0 })),
+        fetch('/api/courses').then(res => res.ok ? res.json() : []).catch(() => [])
+      ]);
       setStatsData(stats);
       setCourses(coursesData);
+    } finally {
       setIsLoading(false);
-    });
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
   }, []);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-8">
       {/* Welcome Section */}
-      <div>
-        <h1 className="text-xl font-bold text-slate-900">Welcome back, {user?.name || "Admin"}!</h1>
-        <p className="text-sm text-slate-500 mt-1">Here is what is happening with your learning platform today.</p>
+      <div className="flex justify-between items-start">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">Welcome back, {user?.name || "Admin"}!</h1>
+          <p className="text-sm text-slate-500 mt-1">Here is what is happening with your learning platform today.</p>
+        </div>
+        <button 
+          onClick={fetchData}
+          disabled={isLoading}
+          className="flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs sm:text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          <span className="hidden sm:inline">Refresh</span>
+        </button>
       </div>
 
       {/* Stats Grid */}
@@ -689,47 +708,6 @@ function StudentDashboardView({ user }: { user: any }) {
         ))}
       </div>
 
-      {/* Progress Chart */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-        <h2 className="text-lg font-bold text-slate-900 mb-6">Learning Progress</h2>
-        <div className="h-[250px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart
-              data={[
-                { name: 'Mon', minutes: 20 },
-                { name: 'Tue', minutes: 45 },
-                { name: 'Wed', minutes: 30 },
-                { name: 'Thu', minutes: 60 },
-                { name: 'Fri', minutes: 90 },
-                { name: 'Sat', minutes: 120 },
-                { name: 'Sun', minutes: 40 },
-              ]}
-              margin={{
-                top: 5,
-                right: 0,
-                left: -20,
-                bottom: 0,
-              }}
-            >
-              <defs>
-                <linearGradient id="colorMinutes" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#ea580c" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#ea580c" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dy={10} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
-              <Tooltip 
-                contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                itemStyle={{ color: '#ea580c', fontWeight: 600 }}
-              />
-              <Area type="monotone" dataKey="minutes" stroke="#ea580c" strokeWidth={2} fillOpacity={1} fill="url(#colorMinutes)" activeDot={{ r: 6, strokeWidth: 0 }} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
       {/* Continue Learning Section */}
       <div>
         <div className="flex items-center justify-between mb-6">
@@ -752,7 +730,7 @@ function StudentDashboardView({ user }: { user: any }) {
                 key={course.id} 
                 className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col cursor-pointer group transition-shadow hover:shadow-md"
               >
-                <div className="relative h-48 w-full bg-slate-100 flex items-center justify-center">
+                <div className="relative h-48 w-full bg-slate-100 flex items-center justify-center overflow-hidden">
                   {course.image ? (
                     <Image 
                       src={course.image} 
@@ -765,6 +743,11 @@ function StudentDashboardView({ user }: { user: any }) {
                     <BookOpen className="w-8 h-8 text-slate-300" />
                   )}
                   <div className="absolute inset-0 bg-slate-900/10 group-hover:bg-transparent transition-colors" />
+                  {course.progress === 100 && (
+                    <div className="absolute top-3 right-3 bg-green-500 text-white text-xs font-bold px-2.5 py-1 rounded-md flex items-center gap-1.5 shadow-sm">
+                      <CheckCircle className="w-3.5 h-3.5" /> Completed
+                    </div>
+                  )}
                 </div>
                 
                 <div className="p-4 flex-1 flex flex-col border-t border-slate-100">
@@ -776,15 +759,23 @@ function StudentDashboardView({ user }: { user: any }) {
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between text-xs font-bold">
                         <span className="text-slate-700">Progress</span>
-                        <span className="text-orange-600">{course.progress || 0}%</span>
+                        <span className={course.progress === 100 ? "text-green-600" : "text-orange-600"}>{course.progress || 0}%</span>
                       </div>
                       <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
                         <div 
-                          className="h-full bg-orange-500 rounded-full transition-all duration-1000 ease-out" 
+                          className={`h-full rounded-full transition-all duration-1000 ease-out ${course.progress === 100 ? 'bg-green-500' : 'bg-orange-500'}`} 
                           style={{ width: `${course.progress || 0}%` }}
                         />
                       </div>
                     </div>
+                    {course.progress === 100 && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); }}
+                        className="w-full mt-3 flex items-center justify-center gap-2 px-3 py-2 bg-green-50 hover:bg-green-100 text-green-700 rounded-lg text-sm font-bold transition-colors border border-green-200"
+                      >
+                        <Download className="w-4 h-4" /> Download Certificate
+                      </button>
+                    )}
                   </div>
                 </div>
               </motion.div>
@@ -804,6 +795,11 @@ function CourseCatalogView({ user }: { user: any }) {
   const [enrolledCourseIds, setEnrolledCourseIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedCourse, setSelectedCourse] = useState<any>(null);
+  
+  const [enrollingCourseId, setEnrollingCourseId] = useState<string | null>(null);
+  const [justEnrolledCourseId, setJustEnrolledCourseId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchCatalog = async () => {
@@ -852,13 +848,43 @@ function CourseCatalogView({ user }: { user: any }) {
     fetchCatalog();
   }, []);
 
+  const categories = ['All', ...Array.from(new Set(courses.map(c => c.category).filter(Boolean)))];
+
   const filteredCourses = courses.filter(course => {
     const query = searchQuery.toLowerCase();
-    return (
-      (course.title && course.title.toLowerCase().includes(query)) ||
-      (course.category && course.category.toLowerCase().includes(query))
-    );
+    const matchesSearch = (course.title && course.title.toLowerCase().includes(query)) ||
+      (course.category && course.category.toLowerCase().includes(query));
+    const matchesCategory = selectedCategory === 'All' || course.category === selectedCategory;
+    return matchesSearch && matchesCategory;
   });
+
+  const handleEnroll = async (courseId: string) => {
+    if (!user?.id) return;
+    setEnrollingCourseId(courseId);
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('ns_session_token') : '';
+      const payload = [{ user_id: user.id, course_id: courseId }];
+      
+      const res = await fetch('/api/enrollments/bulk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      if (res.ok) {
+        setEnrolledCourseIds(prev => new Set(prev).add(courseId));
+        setJustEnrolledCourseId(courseId);
+        setTimeout(() => setJustEnrolledCourseId(null), 2000);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setEnrollingCourseId(null);
+    }
+  };
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
@@ -881,6 +907,22 @@ function CourseCatalogView({ user }: { user: any }) {
         </div>
       </div>
 
+      <div className="flex flex-wrap gap-2 mb-2 sm:mb-6">
+        {categories.map(category => (
+          <button
+            key={category as string}
+            onClick={() => setSelectedCategory(category as string)}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              selectedCategory === category 
+                ? 'bg-slate-900 text-white shadow-sm' 
+                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            {category as string}
+          </button>
+        ))}
+      </div>
+
       {isLoading ? (
         <div className="flex items-center justify-center py-12 text-slate-500 text-sm">Loading courses...</div>
       ) : filteredCourses.length === 0 ? (
@@ -896,7 +938,8 @@ function CourseCatalogView({ user }: { user: any }) {
             <motion.div 
               whileHover={{ y: -2 }}
               key={course.id} 
-              className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col group transition-shadow hover:shadow-md"
+              onClick={() => setSelectedCourse(course)}
+              className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col group transition-shadow hover:shadow-md cursor-pointer"
             >
               <div className="relative h-48 w-full bg-slate-100 flex items-center justify-center">
                 {course.image ? (
@@ -939,6 +982,127 @@ function CourseCatalogView({ user }: { user: any }) {
           ))}
         </div>
       )}
+
+      {/* Course Details Modal */}
+      <AnimatePresence>
+        {selectedCourse && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden relative my-auto"
+            >
+              <button
+                onClick={() => setSelectedCourse(null)}
+                className="absolute top-4 right-4 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/20 hover:bg-black/40 text-white backdrop-blur-md transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              
+              <div className="relative h-64 w-full bg-slate-100">
+                {selectedCourse.image ? (
+                  <Image 
+                    src={selectedCourse.image} 
+                    alt={selectedCourse.title} 
+                    fill 
+                    className="object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center bg-slate-200">
+                    <BookOpen className="w-16 h-16 text-slate-400" />
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+                <div className="absolute bottom-6 left-6 right-6 text-white">
+                  <div className="inline-block px-3 py-1 mb-3 text-xs font-bold uppercase tracking-wider bg-orange-500 text-white rounded-full shadow-sm">
+                    {selectedCourse.category}
+                  </div>
+                  <h2 className="text-2xl sm:text-3xl font-bold leading-tight mb-2">
+                    {selectedCourse.title}
+                  </h2>
+                </div>
+              </div>
+              
+              <div className="p-6 sm:p-8">
+                <div className="flex flex-wrap gap-4 mb-6 pb-6 border-b border-slate-100">
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <Clock className="w-4 h-4 text-orange-500" />
+                    <span>Est. 12 Hours</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <Book className="w-4 h-4 text-orange-500" />
+                    <span>6 Modules</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <Users className="w-4 h-4 text-orange-500" />
+                    <span>1,204 Enrolled</span>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900 mb-3">About This Course</h3>
+                    <p className="text-slate-600 leading-relaxed text-sm sm:text-base">
+                      {selectedCourse.description || "This course provides a comprehensive deep dive into the subject matter. You will learn fundamental concepts, advanced techniques, and practical applications that you can use immediately in your projects."}
+                    </p>
+                  </div>
+
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900 mb-3">Syllabus Highlights</h3>
+                    <ul className="space-y-3">
+                      {[1, 2, 3].map((moduleNum) => (
+                        <li key={moduleNum} className="flex gap-3">
+                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-orange-50 text-orange-600 flex items-center justify-center font-bold text-sm">
+                            {moduleNum}
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-slate-800 text-sm">Module {moduleNum} Fundamentals</h4>
+                            <p className="text-xs text-slate-500 mt-1">Core concepts and setting up your environment.</p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-end gap-4">
+                  <button
+                    onClick={() => setSelectedCourse(null)}
+                    className="px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-xl transition-colors"
+                  >
+                    Close
+                  </button>
+                  {justEnrolledCourseId === selectedCourse.id ? (
+                    <motion.div 
+                      initial={{ scale: 0.8, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="px-6 py-2.5 bg-green-500 text-white rounded-xl text-sm font-bold flex items-center gap-2 shadow-sm"
+                    >
+                      <CheckCircle className="w-4 h-4" /> Enrolled!
+                    </motion.div>
+                  ) : enrolledCourseIds.has(selectedCourse.id) ? (
+                    <div className="px-5 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold flex items-center gap-2 border border-slate-200">
+                      <ShieldCheck className="w-4 h-4 text-green-600" />
+                      Already Enrolled
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => handleEnroll(selectedCourse.id)}
+                      disabled={enrollingCourseId === selectedCourse.id}
+                      className="px-6 py-2.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-70 text-white rounded-xl text-sm font-bold transition-colors shadow-sm hover:shadow flex items-center gap-2"
+                    >
+                      {enrollingCourseId === selectedCourse.id && <RefreshCw className="w-4 h-4 animate-spin" />}
+                      Enroll Now for Free
+                    </button>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -950,10 +1114,15 @@ function ManageCoursesView() {
   const [courses, setCourses] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [previewCourse, setPreviewCourse] = useState<any>(null);
+  
+  const [editingCourse, setEditingCourse] = useState<boolean>(false);
+  const [draftCourse, setDraftCourse] = useState<{ id?: string; title: string; description: string; category?: string }>({ title: '', description: '', category: '' });
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
   useEffect(() => {
     // Fetch from Cloudflare Worker API
-    fetch('/api/admin/courses')
+    fetch('/api/courses')
       .then(res => res.ok ? res.json() : [])
       .then(data => {
         setCourses(data);
@@ -965,6 +1134,53 @@ function ManageCoursesView() {
       });
   }, []);
 
+  useEffect(() => {
+    if (!editingCourse) return;
+    
+    // Auto-save logic
+    const handler = setTimeout(async () => {
+      // Don't save if it's completely empty
+      if (!draftCourse.title && !draftCourse.description) return;
+      
+      setIsSaving(true);
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('ns_session_token') : '';
+        const res = await fetch('/api/courses/draft', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify(draftCourse)
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          setLastSaved(new Date());
+          if (!draftCourse.id && data.id) {
+            setDraftCourse(prev => ({ ...prev, id: data.id }));
+          }
+        }
+      } catch (err) {
+        console.error('Failed to auto-save draft', err);
+      } finally {
+        setIsSaving(false);
+      }
+    }, 5000);
+
+    return () => clearTimeout(handler);
+  }, [draftCourse, editingCourse]);
+
+  const handleEditClick = (course?: any) => {
+    if (course) {
+      setDraftCourse({ id: course.id, title: course.title, description: course.description || '', category: course.category || '' });
+    } else {
+      setDraftCourse({ title: '', description: '', category: '' });
+      setLastSaved(null);
+    }
+    setEditingCourse(true);
+  };
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
@@ -972,7 +1188,10 @@ function ManageCoursesView() {
           <h2 className="text-xl font-bold text-slate-900">Course Management</h2>
           <p className="text-sm text-slate-500">Create courses, structure modules, and upload materials to Cloudflare R2.</p>
         </div>
-        <button className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+        <button 
+          onClick={() => handleEditClick()}
+          className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+        >
           <Plus className="w-4 h-4" /> Create Course
         </button>
       </div>
@@ -991,6 +1210,12 @@ function ManageCoursesView() {
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <h3 className="font-semibold text-slate-900">{course.title}</h3>
               <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => handleEditClick(course)}
+                  className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-md hover:bg-slate-50 transition-colors flex items-center gap-1.5 shadow-sm"
+                >
+                  Edit
+                </button>
                 <button 
                   onClick={() => setPreviewCourse(course)}
                   className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-md hover:bg-slate-50 transition-colors flex items-center gap-1.5 shadow-sm"
@@ -1027,6 +1252,95 @@ function ManageCoursesView() {
           </div>
         ))
       )}
+
+      {/* Editor Modal */}
+      <AnimatePresence>
+        {editingCourse && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col"
+            >
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
+                  {draftCourse.id ? 'Edit Course' : 'Create New Course'}
+                </h3>
+                <div className="flex items-center gap-4">
+                  <span className="text-xs text-slate-500 flex items-center gap-1.5">
+                    {isSaving && <RefreshCw className="w-3.5 h-3.5 animate-spin text-orange-500" />}
+                    {lastSaved ? `Draft saved at ${lastSaved.toLocaleTimeString()}` : 'Editing...'}
+                  </span>
+                  <button 
+                    onClick={() => {
+                      setEditingCourse(false);
+                      // Force a refresh of the courses list here ideally
+                      fetch('/api/courses')
+                        .then(res => res.ok ? res.json() : [])
+                        .then(data => setCourses(data))
+                        .catch(() => {});
+                    }}
+                    className="p-1 text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+              <div className="p-6 overflow-y-auto space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Course Title</label>
+                  <input 
+                    type="text" 
+                    value={draftCourse.title}
+                    onChange={(e) => setDraftCourse({ ...draftCourse, title: e.target.value })}
+                    placeholder="e.g. Introduction to Next.js"
+                    className="w-full px-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
+                  <input 
+                    type="text" 
+                    value={draftCourse.category}
+                    onChange={(e) => setDraftCourse({ ...draftCourse, category: e.target.value })}
+                    placeholder="e.g. Web Development"
+                    className="w-full px-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                  <textarea 
+                    value={draftCourse.description}
+                    onChange={(e) => setDraftCourse({ ...draftCourse, description: e.target.value })}
+                    placeholder="Describe what students will learn..."
+                    rows={5}
+                    className="w-full px-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all resize-none"
+                  />
+                </div>
+                <p className="text-xs text-slate-500 italic flex items-center gap-1">
+                  <RefreshCw className="w-3 h-3" /> Auto-saves every 5 seconds while typing
+                </p>
+              </div>
+              <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+                <button 
+                  onClick={() => {
+                    setEditingCourse(false);
+                    // Force a refresh of the courses list here ideally
+                    fetch('/api/courses')
+                      .then(res => res.ok ? res.json() : [])
+                      .then(data => setCourses(data))
+                      .catch(() => {});
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-white bg-slate-900 rounded-lg hover:bg-slate-800 transition-colors shadow-sm"
+                >
+                  Done Editing
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Preview Modal */}
       <AnimatePresence>
