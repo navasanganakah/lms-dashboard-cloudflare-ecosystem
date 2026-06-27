@@ -1122,7 +1122,10 @@ function ManageCoursesView() {
 
   useEffect(() => {
     // Fetch from Cloudflare Worker API
-    fetch('/api/courses')
+    const token = typeof window !== 'undefined' ? localStorage.getItem('ns_session_token') : '';
+    fetch('/api/admin/courses', {
+      headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
+    })
       .then(res => res.ok ? res.json() : [])
       .then(data => {
         setCourses(data);
@@ -1276,7 +1279,10 @@ function ManageCoursesView() {
                     onClick={() => {
                       setEditingCourse(false);
                       // Force a refresh of the courses list here ideally
-                      fetch('/api/courses')
+                      const token = typeof window !== 'undefined' ? localStorage.getItem('ns_session_token') : '';
+                      fetch('/api/admin/courses', {
+                        headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
+                      })
                         .then(res => res.ok ? res.json() : [])
                         .then(data => setCourses(data))
                         .catch(() => {});
@@ -1327,7 +1333,10 @@ function ManageCoursesView() {
                   onClick={() => {
                     setEditingCourse(false);
                     // Force a refresh of the courses list here ideally
-                    fetch('/api/courses')
+                    const token = typeof window !== 'undefined' ? localStorage.getItem('ns_session_token') : '';
+                    fetch('/api/admin/courses', {
+                      headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
+                    })
                       .then(res => res.ok ? res.json() : [])
                       .then(data => setCourses(data))
                       .catch(() => {});
