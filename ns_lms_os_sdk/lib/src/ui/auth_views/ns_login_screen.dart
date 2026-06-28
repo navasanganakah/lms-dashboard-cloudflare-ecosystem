@@ -37,6 +37,7 @@ class _NsLoginScreenState extends State<NsLoginScreen> {
 
     setState(() { _isLoading = true; _error = ''; });
     final success = await _authService.requestOtp(email);
+    if (!mounted) return;
     setState(() {
       _isLoading = false;
       if (success) {
@@ -59,6 +60,7 @@ class _NsLoginScreenState extends State<NsLoginScreen> {
       _emailController.text.trim(),
       code,
     );
+    if (!mounted) return;
     setState(() { _isLoading = false; });
     
     if (user != null) {

@@ -46,8 +46,21 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, manage, chat
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [user, setUser] = useState<any>(null);
+  const [isOnline, setIsOnline] = useState(true);
 
   // Check auth
+  useEffect(() => {
+    setIsOnline(navigator.onLine);
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
   useEffect(() => {
     const token = localStorage.getItem("auth_token");
     if (token) {
@@ -182,6 +195,21 @@ export default function DashboardPage() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
         
+        {/* Network Status Banner */}
+        <AnimatePresence>
+          {!isOnline && (
+            <motion.div 
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="bg-red-500 text-white text-xs sm:text-sm font-medium px-4 py-2 flex items-center justify-center gap-2 z-20 shrink-0"
+            >
+              <AlertTriangle className="w-4 h-4" />
+              You are currently offline. Some features may be unavailable.
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Top Header */}
         <header className="h-16 bg-white border-b border-slate-200 px-4 sm:px-8 flex items-center justify-between z-10 shrink-0">
           <div className="flex items-center gap-4">
@@ -291,7 +319,7 @@ function AdminDashboardView({ user }: { user: any }) {
         }
         
         setCsvUploadMessage('Uploading enrollments...');
-        const token = typeof window !== 'undefined' ? localStorage.getItem('ns_session_token') : '';
+        const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : '';
         const res = await fetch('/api/enrollments/bulk', {
           method: 'POST',
           headers: { 
@@ -319,7 +347,7 @@ function AdminDashboardView({ user }: { user: any }) {
   const handleDeleteCourse = async () => {
     if (!courseToDelete) return;
     
-    const token = typeof window !== 'undefined' ? localStorage.getItem('ns_session_token') : '';
+    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : '';
     try {
       const res = await fetch(`/api/courses/${courseToDelete.id}`, {
         method: 'DELETE',
@@ -337,7 +365,8 @@ function AdminDashboardView({ user }: { user: any }) {
   };
 
   const handleExport = () => {
-    window.open('/api/backup', '_blank');
+    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : '';
+    window.open(`/api/backup?token=${token}`, '_blank');
   };
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -647,7 +676,7 @@ function StudentDashboardView({ user }: { user: any }) {
 
   useEffect(() => {
     // Fetch enrollments (fallback to mock data if API fails)
-    const token = typeof window !== 'undefined' ? localStorage.getItem('ns_session_token') : '';
+    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : '';
     
     const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
     
@@ -804,7 +833,7 @@ function CourseCatalogView({ user }: { user: any }) {
   useEffect(() => {
     const fetchCatalog = async () => {
       try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('ns_session_token') : '';
+        const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : '';
         const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
         
         // Fetch courses and enrollments concurrently
@@ -862,7 +891,7 @@ function CourseCatalogView({ user }: { user: any }) {
     if (!user?.id) return;
     setEnrollingCourseId(courseId);
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('ns_session_token') : '';
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : '';
       const payload = [{ user_id: user.id, course_id: courseId }];
       
       const res = await fetch('/api/enrollments/bulk', {
@@ -1122,7 +1151,7 @@ function ManageCoursesView() {
 
   useEffect(() => {
     // Fetch from Cloudflare Worker API
-    const token = typeof window !== 'undefined' ? localStorage.getItem('ns_session_token') : '';
+    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : '';
     fetch('/api/admin/courses', {
       headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
     })
@@ -1147,7 +1176,7 @@ function ManageCoursesView() {
       
       setIsSaving(true);
       try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('ns_session_token') : '';
+        const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : '';
         const res = await fetch('/api/courses/draft', {
           method: 'POST',
           headers: { 
@@ -1279,7 +1308,7 @@ function ManageCoursesView() {
                     onClick={() => {
                       setEditingCourse(false);
                       // Force a refresh of the courses list here ideally
-                      const token = typeof window !== 'undefined' ? localStorage.getItem('ns_session_token') : '';
+                      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : '';
                       fetch('/api/admin/courses', {
                         headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
                       })
@@ -1333,7 +1362,7 @@ function ManageCoursesView() {
                   onClick={() => {
                     setEditingCourse(false);
                     // Force a refresh of the courses list here ideally
-                    const token = typeof window !== 'undefined' ? localStorage.getItem('ns_session_token') : '';
+                    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : '';
                     fetch('/api/admin/courses', {
                       headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
                     })

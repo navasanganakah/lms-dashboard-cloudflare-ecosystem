@@ -173,9 +173,14 @@ export default {
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
         return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
       }
+      const token = authHeader.split(" ")[1];
+      const session = await env.DB.prepare("SELECT * FROM sessions WHERE id = ? AND expires_at > ?").bind(token, new Date().toISOString()).first();
+      if (!session) return new Response(JSON.stringify({ error: "Invalid session" }), { status: 401, headers: { "Content-Type": "application/json" } });
+      
+      const user = await env.DB.prepare("SELECT role FROM users WHERE id = ?").bind(session.user_id).first();
+      if (user?.role !== 'admin') return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: { "Content-Type": "application/json" } });
+
       try {
-        // Simple auth check, assume they are admin if they reached here based on frontend logic, 
-        // though strictly we should check role in DB
         const courses = await env.DB.prepare("SELECT * FROM courses WHERE status != 'deleted'").all();
         return new Response(JSON.stringify(courses.results), { status: 200, headers: { "Content-Type": "application/json" } });
       } catch (e) {
@@ -207,6 +212,11 @@ export default {
         return new Response(JSON.stringify({ error: "Invalid or expired session" }), { status: 401, headers: { "Content-Type": "application/json" } });
       }
       
+      const user = await env.DB.prepare("SELECT role FROM users WHERE id = ?").bind(session.user_id).first();
+      if (user?.role !== 'admin') {
+        return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: { "Content-Type": "application/json" } });
+      }
+      
       try {
         const body = await request.json() as { id?: string; title: string; description: string };
         const courseId = body.id || crypto.randomUUID();
@@ -231,7 +241,14 @@ export default {
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
         return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
       }
-      // Assuming admin check is done here in a real app
+      
+      const token = authHeader.split(" ")[1];
+      const session = await env.DB.prepare("SELECT * FROM sessions WHERE id = ? AND expires_at > ?").bind(token, new Date().toISOString()).first();
+      if (!session) return new Response(JSON.stringify({ error: "Invalid session" }), { status: 401, headers: { "Content-Type": "application/json" } });
+      
+      const user = await env.DB.prepare("SELECT role FROM users WHERE id = ?").bind(session.user_id).first();
+      if (user?.role !== 'admin') return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: { "Content-Type": "application/json" } });
+
       const courseId = url.pathname.split("/")[3];
       try {
         await env.DB.prepare("UPDATE courses SET status = 'deleted', deleted_at = CURRENT_TIMESTAMP WHERE id = ?").bind(courseId).run();
@@ -283,7 +300,7 @@ export default {
           if (e.user_id && e.course_id) {
             const id = crypto.randomUUID();
             stmts.push(
-              env.DB.prepare("INSERT INTO enrollments (id, user_id, course_id, progress) VALUES (?, ?, ?, ?)").bind(id, e.user_id, e.course_id, e.progress || 0)
+              env.DB.prepare("INSERT INTO enrollments (id, user_id, course_id, progress) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, course_id) DO UPDATE SET progress = excluded.progress").bind(id, e.user_id, e.course_id, e.progress || 0)
             );
           }
         }
@@ -299,28 +316,40 @@ export default {
     }
 
     // --- Backup & Restore Routes ---
-    if (url.pathname === "/api/backup" && request.method === "GET") {
-      try {
-        const tables = ["users", "otps", "courses", "sessions", "fcm_tokens", "enrollments", "modules", "lessons", "assessments", "materials"];
-        const backupData: Record<string, any> = {};
-        for (const table of tables) {
-          const res = await env.DB.prepare(`SELECT * FROM ${table}`).all();
-          backupData[table] = res.results;
-        }
-        return new Response(JSON.stringify(backupData), { 
-          status: 200, 
-          headers: { 
-            "Content-Type": "application/json",
-            "Content-Disposition": `attachment; filename="lms_backup_${new Date().toISOString().split('T')[0]}.json"`
-          } 
-        });
-      } catch (e) {
-        return new Response(JSON.stringify({ error: (e as Error).message }), { status: 500 });
-      }
-    }
+    if (url.pathname === "/api/backup" && (request.method === "GET" || request.method === "POST")) {
+      const authHeader = request.headers.get("Authorization") || url.searchParams?.get("token") ? `Bearer ${url.searchParams?.get("token")}` : null;
+      // Note: for GET from window.open we might need token in query param. 
+      // But let's check headers first. 
+      const tokenStr = request.headers.get("Authorization")?.split(" ")[1] || (new URL(request.url)).searchParams.get("token");
+      
+      if (!tokenStr) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
 
-    if (url.pathname === "/api/backup" && request.method === "POST") {
-      try {
+      const session = await env.DB.prepare("SELECT * FROM sessions WHERE id = ? AND expires_at > ?").bind(tokenStr, new Date().toISOString()).first();
+      if (!session) return new Response(JSON.stringify({ error: "Invalid session" }), { status: 401 });
+      
+      const user = await env.DB.prepare("SELECT role FROM users WHERE id = ?").bind(session.user_id).first();
+      if (user?.role !== 'admin') return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 });
+
+      if (request.method === "GET") {
+        try {
+          const tables = ["users", "otps", "courses", "sessions", "fcm_tokens", "enrollments", "modules", "lessons", "assessments", "materials"];
+          const backupData: Record<string, any> = {};
+          for (const table of tables) {
+            const res = await env.DB.prepare(`SELECT * FROM ${table}`).all();
+            backupData[table] = res.results;
+          }
+          return new Response(JSON.stringify(backupData), { 
+            status: 200, 
+            headers: { 
+              "Content-Type": "application/json",
+              "Content-Disposition": `attachment; filename="lms_backup_${new Date().toISOString().split('T')[0]}.json"`
+            } 
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ error: (e as Error).message }), { status: 500 });
+        }
+      } else {
+        try {
         const data = await request.json() as Record<string, any[]>;
         const deleteOrder = ["materials", "assessments", "lessons", "modules", "enrollments", "fcm_tokens", "sessions", "courses", "otps", "users"];
         const insertOrder = ["users", "otps", "courses", "sessions", "fcm_tokens", "enrollments", "modules", "lessons", "assessments", "materials"];
@@ -351,6 +380,7 @@ export default {
         return new Response(JSON.stringify({ success: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       } catch (e) {
         return new Response(JSON.stringify({ error: (e as Error).message }), { status: 500 });
+      }
       }
     }
 
